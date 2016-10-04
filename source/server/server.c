@@ -71,6 +71,7 @@ void* server_main(void* arg)
 			error("ERROR on accept");
 		}
 
+		new_client->connected = 1;
 		new_client->socket = newsockfd;
 		pthread_create(&new_client->thread, NULL, client_main, new_client);
 		new_client = init_client();

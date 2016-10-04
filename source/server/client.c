@@ -96,10 +96,42 @@ void* client_main(void* arg)
 	return NULL;
 }
 
+void remove_client(client_t* client)
+{
+	if (client == client_tail)
+	{
+		client_tail = client->prev;
+	}
+
+	if (client == client_head)
+	{
+		client_head = client->next;
+	}
+
+	if (client->prev)
+	{
+		client->prev->next = client->next;
+	}
+
+	if (client->next)
+	{
+		client->next->prev = client->prev;
+	}
+}
+
 void kill_all_clients()
 {
-	while (0 && client_tail)
+	printf("killing clients");
+
+	while (client_tail)
 	{
+		if (client_tail->connected)
+		{
+			client_write(client_tail, "disconnect");
+			close(client_tail->socket);
+		}
+
+		remove_client(client_tail);
 	}
 }
 
@@ -107,6 +139,7 @@ client_t* init_client()
 {
 	client_t* new_client = malloc(sizeof(client_t));
 
+	new_client->connected = 0;
 	new_client->next = NULL;
 	new_client->prev = client_head;
 	client_tail = new_client;

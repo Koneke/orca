@@ -1,11 +1,13 @@
+#define _BSD_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <unistd.h>
 #include <netdb.h> 
+#include <pthread.h>
+
+int sockfd;
+int connected;
 
 void error(const char *msg)
 {
@@ -13,11 +15,57 @@ void error(const char *msg)
 	exit(0);
 }
 
+void* receive(void* arg)
+{
+	char buffer[256];
+
+	fd_set socket_fdset;
+
+	while (connected)
+	{
+		FD_ZERO(&socket_fdset);
+		FD_SET(sockfd, &socket_fdset);
+		memset(buffer, '\0', 256);
+
+		struct timeval timeout = { .tv_sec = 1, .tv_usec = 0 };
+		int rv = select(FD_SETSIZE, &socket_fdset, NULL, NULL, &timeout);
+
+		if (rv == 0)
+		{
+			continue;
+		}
+
+		int n = read(sockfd, buffer, 255);
+		if (n < 0) 
+		{
+			error("ERROR reading from socket");
+		}
+
+		if (!strcmp(buffer, "disconnect"))
+		{
+			connected = 0;
+			printf("server disconnected.");
+			break;
+		}
+
+		printf("%s\n", buffer);
+	}
+
+	return NULL;
+}
+
 int main(int argc, char *argv[])
 {
-	int sockfd, portno, n;
+	setbuf(stdout, NULL);
+
+	int portno, n;
 	struct sockaddr_in serv_addr;
 	struct hostent *server;
+
+	connected = 1;
+
+	pthread_t receiver_thread;
+	pthread_create(&receiver_thread, NULL, receive, NULL);
 
 	char buffer[256];
 
@@ -52,47 +100,38 @@ int main(int argc, char *argv[])
 		error("ERROR connecting");
 	}
 
-	int run = 1;
-
-	while (run)
+	while (connected)
 	{
 		printf("Please enter the message: ");
 
 		memset(buffer, '\0', 256);
-		//fgets(buffer, 255, stdin);
 		scanf("%[^\n]%*c", buffer);
 
 		char command[5];
 		memcpy(command, buffer, 4);
 		command[4] = '\0';
 
-		n = write(sockfd, buffer, strlen(buffer));
-		if (n < 0) 
+		if (connected)
 		{
-			error("ERROR writing to socket");
+			n = write(sockfd, buffer, strlen(buffer));
+			if (n < 0) 
+			{
+				error("ERROR writing to socket");
+			}
+
+			//fputs(command, stdout);
+			printf("\n");
+
+			if (!strcmp(command, "quit"))
+			{
+				connected = 0;
+				printf("quitting\n");
+				continue;
+			}
 		}
-
-		fputs(command, stdout);
-		printf("\n");
-
-		if (!strcmp(command, "quit"))
-		{
-			run = 0;
-			printf("quitting\n");
-			continue;
-		}
-
-		memset(buffer, '\0', 256);
-
-		n = read(sockfd, buffer, 255);
-		if (n < 0) 
-		{
-			error("ERROR reading from socket");
-		}
-
-		printf("%s\n", buffer);
 	}
 
+	pthread_join(receiver_thread, NULL);
 	close(sockfd);
 	return 0;
 }
